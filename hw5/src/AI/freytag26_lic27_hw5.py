@@ -8,6 +8,109 @@ from Ant import UNIT_STATS
 from Move import Move
 from GameState import *
 from AIPlayerUtils import *
+import numpy as np
+
+## ------------- Neural Network ---------------
+
+INPUT_NODES = 4
+HIDDEN_NODES = 8
+OUTPUT_NODES = 1
+LEARNING_RATE = 0.5
+
+## initalize random weights bewteen -1 and 1
+np.random.seed(1)
+hiddenLayerWeights = 2 * np.random.rand(INPUT_NODES + 1, HIDDEN_NODES) - 1 # 40 nodes
+outputLayerWeights = 2 * np.random.rand(HIDDEN_NODES + 1, OUTPUT_NODES) - 1 # 9 nodes
+
+
+# training data
+examples = [
+    ([0, 0, 0, 0], [0]),
+    ([0, 0, 0, 1], [1]),
+    ([0, 0, 1, 0], [0]),
+    ([0, 0, 1, 1], [1]),
+    ([0, 1, 0, 0], [0]),
+    ([0, 1, 0, 1], [1]),
+    ([0, 1, 1, 0], [0]),
+    ([0, 1, 1, 1], [1]),
+    ([1, 0, 0, 0], [1]),
+    ([1, 0, 0, 1], [1]),
+    ([1, 0, 1, 0], [1]),
+    ([1, 0, 1, 1], [1]),
+    ([1, 1, 0, 0], [0]),
+    ([1, 1, 0, 1], [0]),
+    ([1, 1, 1, 0], [0]),
+    ([1, 1, 1, 1], [1])
+]
+
+# activation function
+def sigmoid(x):
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+def sigmoidDerivative(x):
+    return x * (1.0 - x)
+
+# ---- output function ----
+def forwardPass(inputs, hiddenLayerWeights, outputLayerWeights):
+    # add bias to input
+    inputWithBias = np.append(inputs, 1).reshape(1, -1)
+
+    # hidden layer
+    hiddenInput = np.dot(inputWithBias, hiddenLayerWeights)
+    hiddenOutput = sigmoid(hiddenInput)
+
+    # add bias to hidden layer
+    hiddenLayerWithBias = np.append(hiddenInput, 1).reshape(1, -1)
+
+    # output layer
+    finalInput = np.dot(hiddenLayerWithBias, outputLayerWeights)
+    finalOutput = sigmoid(finalInput)
+
+
+    return finalOutput, hiddenOutput 
+
+
+
+
+
+# init training round
+epoch = 0
+
+# training loop
+while True:
+    epoch += 1
+    errors = []
+
+    # randomly pick 10 examples
+    for i in range(10):
+        inputs, target = random.choice(examples) 
+        inputs = np.array(inputs) # convert inputs to np array
+        target = np.array(target).reshape(1, -1)
+
+        # forward pass
+        finalOutput, hiddenOutput = forwardPass(inputs, hiddenLayerWeights, outputLayerWeights)
+
+        # ---- to be continued ----
+        
+
+
+    avgError = np.mean(errors)
+
+    if avgError < 0.5:
+        break
+
+
+
+
+
+        
+        
+
+
+
+
+
 
 
 ##
@@ -126,4 +229,6 @@ class AIPlayer(Player):
         #method templaste, not implemented
         pass
 
-    
+
+
+
