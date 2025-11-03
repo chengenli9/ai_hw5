@@ -9,6 +9,124 @@ from Move import Move
 from GameState import *
 from AIPlayerUtils import *
 
+import random
+import sys
+
+sys.path.append("..")  # so other modules can be found in parent dir
+from Player import *
+from Constants import *
+from Construction import CONSTR_STATS
+from Ant import UNIT_STATS
+from Move import Move
+from GameState import *
+from AIPlayerUtils import *
+import numpy as np
+
+## ------------- Neural Network ---------------
+
+INPUT_NODES = 4
+HIDDEN_NODES = 8
+OUTPUT_NODES = 1
+LEARNING_RATE = 0.5
+
+## initalize random weights bewteen -1 and 1
+np.random.seed(1)
+hiddenLayerWeights = 2 * np.random.rand(INPUT_NODES + 1, HIDDEN_NODES) - 1  # 40 nodes
+outputLayerWeights = 2 * np.random.rand(HIDDEN_NODES + 1, OUTPUT_NODES) - 1  # 9 nodes
+
+# training data
+examples = [
+    ([0, 0, 0, 0], [0]),
+    ([0, 0, 0, 1], [1]),
+    ([0, 0, 1, 0], [0]),
+    ([0, 0, 1, 1], [1]),
+    ([0, 1, 0, 0], [0]),
+    ([0, 1, 0, 1], [1]),
+    ([0, 1, 1, 0], [0]),
+    ([0, 1, 1, 1], [1]),
+    ([1, 0, 0, 0], [1]),
+    ([1, 0, 0, 1], [1]),
+    ([1, 0, 1, 0], [1]),
+    ([1, 0, 1, 1], [1]),
+    ([1, 1, 0, 0], [0]),
+    ([1, 1, 0, 1], [0]),
+    ([1, 1, 1, 0], [0]),
+    ([1, 1, 1, 1], [1])
+]
+
+
+# activation function
+def sigmoid(x):
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+def sigmoidDerivative(x):
+    return x * (1.0 - x)
+
+
+# ---- output function ----
+def forwardPass(inputs, hiddenLayerWeights, outputLayerWeights):
+    # add bias to input
+    inputWithBias = np.append(inputs, 1).reshape(1, -1)
+
+    # hidden layer
+    hiddenInput = np.dot(inputWithBias, hiddenLayerWeights)
+    hiddenOutput = sigmoid(hiddenInput)
+
+    # add bias to hidden layer
+    hiddenLayerWithBias = np.append(hiddenInput, 1).reshape(1, -1)
+
+    # output layer
+    finalInput = np.dot(hiddenLayerWithBias, outputLayerWeights)
+    finalOutput = sigmoid(finalInput)
+
+    return finalOutput, hiddenOutput
+
+def backwardPass(inputs, hiddenLayerWeights, outputLayerWeights, target):
+    # error calculation
+    finalOutput, hiddenOutput = forwardPass(inputs, hiddenLayerWeights, outputLayerWeights)
+    outputError = np.array(target - finalOutput)
+    hiddenErrorTerms = np.dot(outputError, sigmoidDerivative(finalOutput))
+    hiddenError = np.array(hiddenErrorTerms * hiddenLayerWeights)
+
+    # adjusted weights
+    adjustedOutputLayerWeights = []
+    for i in range(outputLayerWeights):
+        adjustedOutputLayerWeights.append(outputLayerWeights[i] + LEARNING_RATE * outputError * sigmoidDerivative(finalOutput) * hiddenOutput[i])
+
+    adjustedHiddenLayerWeights = []
+    for i in range(hiddenLayerWeights):
+        adjustedHiddenLayerWeights.append(hiddenLayerWeights[i] + LEARNING_RATE * hiddenError * inputs[i%8])
+
+    return np.array(adjustedOutputLayerWeights), np.array(adjustedHiddenLayerWeights)
+
+
+
+# init training round
+epoch = 0
+
+# training loop
+while True:
+    epoch += 1
+    errors = []
+
+    # randomly pick 10 examples
+    for i in range(10):
+        inputs, target = random.choice(examples)
+        inputs = np.array(inputs)  # convert inputs to np array
+        target = np.array(target).reshape(1, -1)
+
+        # forward pass
+        finalOutput, hiddenOutput = forwardPass(inputs, hiddenLayerWeights, outputLayerWeights)
+        adjustedOutputLayerWeights, adjustedHiddenLayerWeights = backwardPass(inputs, hiddenLayerWeights, outputLayerWeights, target)
+
+        # ---- to be continued ----
+
+    avgError = np.mean(errors)
+
+    if avgError < 0.5:
+        break
+
 
 ##
 #AIPlayer
