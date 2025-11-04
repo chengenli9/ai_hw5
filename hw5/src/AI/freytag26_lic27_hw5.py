@@ -71,6 +71,23 @@ def forwardPass(inputs, hiddenLayerWeights, outputLayerWeights):
     return finalOutput, hiddenOutput 
 
 
+def backwardPass(inputs, hiddenLayerWeights, outputLayerWeights, target):
+    # error calculation
+    finalOutput, hiddenOutput = forwardPass(inputs, hiddenLayerWeights, outputLayerWeights)
+    outputError = np.array(target - finalOutput)
+    hiddenErrorTerms = np.dot(outputError, sigmoidDerivative(finalOutput))
+    hiddenError = np.array(hiddenErrorTerms * hiddenLayerWeights)
+
+    # adjusted weights
+    adjustedOutputLayerWeights = []
+    for i in range(outputLayerWeights):
+        adjustedOutputLayerWeights.append(outputLayerWeights[i] + LEARNING_RATE * outputError * sigmoidDerivative(finalOutput) * hiddenOutput[i])
+
+    adjustedHiddenLayerWeights = []
+    for i in range(hiddenLayerWeights):
+        adjustedHiddenLayerWeights.append(hiddenLayerWeights[i] + LEARNING_RATE * hiddenError * inputs[i%8])
+
+    return np.array(adjustedOutputLayerWeights), np.array(adjustedHiddenLayerWeights)
 
 
 
@@ -92,8 +109,7 @@ while True:
         finalOutput, hiddenOutput = forwardPass(inputs, hiddenLayerWeights, outputLayerWeights)
 
         # ---- to be continued ----
-        
-
+        # add backpropagation 
 
     avgError = np.mean(errors)
 
