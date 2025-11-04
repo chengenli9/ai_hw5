@@ -71,6 +71,7 @@ def forwardPass(inputs, hiddenLayerWeights, outputLayerWeights):
     return finalOutput, hiddenOutput 
 
 
+
 def backwardPass(inputs, hiddenLayerWeights, outputLayerWeights, target):
     # error calculation
     finalOutput, hiddenOutput = forwardPass(inputs, hiddenLayerWeights, outputLayerWeights)
