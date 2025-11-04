@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import matplotlib.pyplot as plt
 
 
 INPUT_NODES = 4
@@ -66,10 +67,8 @@ def forwardPass(inputs, hiddenLayerWeights, outputLayerWeights):
 # back propagation
 def backwardPass(inputs, target, finalOutput, hiddenOutput,
                  hiddenLayerWeights, outputLayerWeights):
-    # Convert to 2D arrays 
-    inputs = inputs.reshape(1, -1)
+    
     hiddenOutput = hiddenOutput.reshape(1, -1)
-    target = np.array(target).reshape(1, -1)
 
     # Add bias to inputs and hidden layer
     inputWithBias = np.append(inputs, 1).reshape(1, -1)
@@ -87,7 +86,7 @@ def backwardPass(inputs, target, finalOutput, hiddenOutput,
     outputLayerWeights += LEARNING_RATE * hiddenWithBias.T.dot(outputDelta)
     hiddenLayerWeights += LEARNING_RATE * inputWithBias.T.dot(hiddenDelta)
 
-    return hiddenLayerWeights, outputLayerWeights, abs(outputError[0][0])
+    return hiddenLayerWeights, outputLayerWeights, abs(outputError[0][0]) 
 
 
 
@@ -95,6 +94,7 @@ def backwardPass(inputs, target, finalOutput, hiddenOutput,
 
 # init training round
 epoch = 0
+errorData = []
 
 # training loop
 while True:
@@ -104,7 +104,7 @@ while True:
     # randomly pick 10 examples
     for i in range(10):
         inputs, target = random.choice(examples) 
-        inputs = np.array(inputs) # convert inputs to np array
+        inputs = np.array(inputs).reshape(1, -1) # convert inputs to np array
         target = np.array(target).reshape(1, -1)
 
         # forward pass
@@ -119,8 +119,19 @@ while True:
         errors.append(error) 
 
     averageError = np.mean(errors)
+    errorData.append(averageError)
     print(f"Epoch {epoch}: average error = {averageError:.4f}")
+
 
     # stop the loop when average error is below 0.05
     if averageError < 0.05:
         break
+    
+
+# --- plot to visualize growth ---
+plt.plot(errorData)
+plt.title("Neural Network Learning Curve")
+plt.xlabel("Epoch")
+plt.ylabel("Average Error")
+plt.grid(True)
+plt.show()
