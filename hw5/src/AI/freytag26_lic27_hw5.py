@@ -41,6 +41,7 @@ def sigmoid(x):
 def sigmoidDerivative(x):
     return x * (1.0 - x)
 
+
 # forward propagation 
 def forwardPass(inputs, hiddenLayerWeights, outputLayerWeights):
     # add bias to input
@@ -61,6 +62,7 @@ def forwardPass(inputs, hiddenLayerWeights, outputLayerWeights):
     return finalOutput, hiddenOutput 
 
 
+# source: https://www.geeksforgeeks.org/machine-learning/backpropagation-in-neural-network/ and ChatGPT
 # back propagation
 def backwardPass(inputs, target, finalOutput, hiddenOutput,
                  hiddenLayerWeights, outputLayerWeights):
@@ -78,7 +80,7 @@ def backwardPass(inputs, target, finalOutput, hiddenOutput,
     outputDelta = outputError * sigmoidDerivative(finalOutput)
 
     # Calculate hidden layer error and delta 
-    hiddenError = outputDelta.dot(outputLayerWeights[:-1].T)
+    hiddenError = outputDelta.dot(outputLayerWeights[:-1].T) # exclude the bias
     hiddenDelta = hiddenError * sigmoidDerivative(hiddenOutput)
 
     # Update the weights 
