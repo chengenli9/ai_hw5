@@ -1,14 +1,17 @@
+# HW5a
+# Authors: Chengen and Leonie
+
 import numpy as np
 import random
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
-
+# initalize how many nodes we want for the NN
 INPUT_NODES = 4
 HIDDEN_NODES = 8
 OUTPUT_NODES = 1
 LEARNING_RATE = 0.5
 
-## initalize random weights bewteen -1 and 1
+# initalize random weights bewteen -1 and 1
 np.random.seed(1)
 hiddenLayerWeights = 2 * np.random.rand(INPUT_NODES + 1, HIDDEN_NODES) - 1 # 40 nodes
 outputLayerWeights = 2 * np.random.rand(HIDDEN_NODES + 1, OUTPUT_NODES) - 1 # 9 nodes
@@ -43,7 +46,9 @@ def sigmoidDerivative(x):
     return x * (1.0 - x)
 
 
-# forward propagation 
+## forwardPass
+# Description: returns the output of the output along with the inputs from the hidden nodes
+#
 def forwardPass(inputs, hiddenLayerWeights, outputLayerWeights):
     # add bias to input
     inputWithBias = np.append(inputs, 1).reshape(1, -1)
@@ -63,8 +68,13 @@ def forwardPass(inputs, hiddenLayerWeights, outputLayerWeights):
     return finalOutput, hiddenOutput 
 
 
+
+## backwardPass
+# Description: returns the updated weight values for hiddenlayer and outputlayers. 
+#               Also returns the output error after one iteration
+# 
 # source: https://www.geeksforgeeks.org/machine-learning/backpropagation-in-neural-network/ and ChatGPT
-# back propagation
+#
 def backwardPass(inputs, target, finalOutput, hiddenOutput,
                  hiddenLayerWeights, outputLayerWeights):
     
@@ -126,12 +136,12 @@ while True:
     # stop the loop when average error is below 0.05
     if averageError < 0.05:
         break
-    
 
-# --- plot to visualize growth ---
-plt.plot(errorData)
-plt.title("Neural Network Learning Curve")
-plt.xlabel("Epoch")
-plt.ylabel("Average Error")
-plt.grid(True)
-plt.show()
+
+# # --- plot to visualize growth ---
+# plt.plot(errorData)
+# plt.title("Neural Network Learning Curve")
+# plt.xlabel("Epoch")
+# plt.ylabel("Average Error")
+# plt.grid(True)
+# plt.show()
