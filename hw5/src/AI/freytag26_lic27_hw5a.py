@@ -58,9 +58,9 @@ def sigmoidDerivative(x):
 ## forwardPass
 # Description: returns the output of the output along with the inputs from the hidden nodes
 #
-def forwardPass(inputs, hiddenLayerWeights, outputLayerWeights):
-    # add bias to input
-    inputWithBias = np.append(inputs, 1).reshape(1, -1)
+def forwardPass(currentState, hiddenLayerWeights, outputLayerWeights):
+    # TODO: add bias to input
+    inputWithBias = np.append(1, inputs)
 
     # hidden layer
     hiddenInput = np.dot(inputWithBias, hiddenLayerWeights)
@@ -122,9 +122,10 @@ while True:
 
     # randomly pick 10 examples
     for i in range(10):
-        inputs, target = random.choice(examples) 
-        inputs = np.array(inputs).reshape(1, -1) # convert inputs to np array
-        target = np.array(target).reshape(1, -1)
+        # TODO: adjust feature values to be between 0 and 1
+        inputs = np.array(self.getFeatures(currentState))
+        # TODO: add call to utility function from HW2a here
+        target = self.utility(currentState, nextState)
 
         # forward pass
         finalOutput, hiddenOutput = forwardPass(inputs, hiddenLayerWeights, outputLayerWeights)
@@ -259,6 +260,172 @@ class AIPlayer(Player):
     def registerWin(self, hasWon):
         pass
 
+        ##
+        # calculateStateUtility
+        # Description: Calculates the utility value for a given game state by converting heuristic to utility
+        #
+        # Parameters:
+        #   parentState - The previous game state (GameState)
+        #   currentState - The current game state to evaluate (GameState)
+        #
+        # Return: A utility score representing state favorability
+        ##
+
+    def getFeatures(self, currentState):
+        me = currentState.whoseTurn
+        them = 1 - me
+
+        ## comparable features (possibly assigning 0 if <0, 0.5 if = 0, 1 if > 0)
+
+        # food difference between agent and opponent
+        myFood = currentState.inventories[me].foodCount
+        theirFood = currentState.inventories[them].foodCount
+        food_difference = myFood - theirFood
+
+        # health difference between agent’s and opponent’s queen and anthill
+        health_difference = 0
+
+        theirAnthill = currentState.inventories[them].getAnthill()
+        myAnthill = currentState.inventories[me].getAnthill()
+        theirQueen = None
+        if len(getAntList(currentState, them, (QUEEN,))) > 0 and len(getAntList(currentState, me, (QUEEN,))) > 0:
+            myQueen = getAntList(currentState, me, (QUEEN,))[0]
+            myQueensHealth = myQueen.health
+            theirQueen = getAntList(currentState, them, (QUEEN,))[0]
+            theirQueensHealth = theirQueen.health
+            myAnthillHealth = myAnthill.captureHealth
+            theirAnthillHealth = theirAnthill.captureHealth
+            health_difference = (myQueensHealth + myAnthillHealth * 3) - (theirQueensHealth + theirAnthillHealth * 3)
+        else:
+            return [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+
+        # soldier number difference between agent and opponent
+        mySoldiers = getAntList(currentState, me, (SOLDIER,))
+        theirSoldiers = getAntList(currentState, them, (SOLDIER,))
+        soldier_difference = len(mySoldiers) - len(theirSoldiers)
+
+        # drone number difference between agent and opponent
+        myDrones = getAntList(currentState, me, (DRONE,))
+        theirDrones = getAntList(currentState, them, (DRONE,))
+        drone_difference = len(myDrones) - len(theirDrones)
+
+        # ranged soldier number difference between agent and opponent
+        myRSoldiers = getAntList(currentState, me, (R_SOLDIER,))
+        theirRSoldiers = getAntList(currentState, them, (R_SOLDIER,))
+        r_soldier_difference = len(myRSoldiers) - len(theirRSoldiers)
+
+        # difference in offensive capability (1 if >0, 0 if <= 0)
+        myAttAnts = getAntList(currentState, me, (DRONE, SOLDIER, R_SOLDIER))
+        theirAttAnts = getAntList(currentState, them, (DRONE, SOLDIER, R_SOLDIER))
+        offensive_difference = len(myAttAnts) - len(theirAttAnts)
+        offensive_capability = 1 if offensive_difference > 0 else 0
+
+        ## distance features (setting min max limits individually)
+
+        # average distance between the agent’s worker and food
+        worker_food_distance = 0
+        myWorkers = getAntList(currentState, me, (WORKER,))
+        myFoodObjs = getCurrPlayerFood(currentState)
+        myTunnel = currentState.inventories[me].getTunnels()[0]
+        distances = []
+        carryingWorkers = 0
+        if myWorkers and myAnthill and myFoodObjs:
+            for worker in myWorkers:
+                # goal for carrying workers is the tunnel/anthill to drop it
+                if worker.carrying:
+                    carryingWorkers += 1
+                    distance1 = approxDist(myAnthill.coords, worker.coords)
+                    distance2 = approxDist(myTunnel.coords, worker.coords)
+                    if worker.coords == myAnthill.coords or worker.coords == myTunnel.coords:
+                        distance1 = 4
+                # goal for workers not carrying food is one of the two food objects to get it
+                else:
+                    distance1 = approxDist(myFoodObjs[0].coords, worker.coords)
+                    distance2 = approxDist(myFoodObjs[1].coords, worker.coords)
+                    if worker.coords == myFoodObjs[0].coords or worker.coords == myFoodObjs[1].coords:
+                        distance1 = 4
+                # chooses the shorter distance of the two goal objects
+                distances.append(distance1) if distance1 < distance2 else distances.append(distance2)
+            # add some emphasis on carrying food to incentivise picking up food
+            worker_food_distance = (sum(distances) / len(distances)) - (carryingWorkers * 0.5) if len(
+                distances) > 0 else 0
+
+        # average distance between opponent’s offensive ants and agent’s queen
+        their_offense_queen_distance = 0
+        distances = []
+        if theirAttAnts and myQueen:
+            for ant in theirAttAnts:
+                distances.append(approxDist(ant.coords, myQueen.coords))
+            their_offense_queen_distance = (sum(distances) / len(distances))
+
+        # average distance between agent’s offense and opponent’s anthill
+        my_offense_anthill_distance = 0
+        distances = []
+        if myAttAnts and theirAnthill:
+            for ant in myAttAnts:
+                distances.append(approxDist(ant.coords, theirAnthill.coords))
+            my_offense_anthill_distance = (sum(distances) / len(distances))
+
+        # average distance between opponent’s offense and agent’s anthill
+        their_offense_anthill_distance = 0
+        distances = []
+        if theirAttAnts and myAnthill:
+            for ant in theirAttAnts:
+                distances.append(approxDist(ant.coords, myAnthill.coords))
+            their_offense_anthill_distance = (sum(distances) / len(distances))
+
+        # average distance between agent’s offense and opponent’s queen
+        distances = []
+        my_offense_queen_distance = 0
+        if myAttAnts and theirQueen:
+            for ant in myAttAnts:
+                distances.append(approxDist(ant.coords, theirQueen.coords))
+            my_offense_queen_distance = (sum(distances) / len(distances))
+
+        # average dist between agent’s offense and opponent’s offense closest to queen
+        my_defense_offense_distance = 0
+        if theirAttAnts and myAttAnts:
+            closestAnt = theirAttAnts[0]
+            for ant in theirAttAnts:
+                if approxDist(closestAnt.coords, myQueen.coords) > approxDist(ant.coords, myQueen.coords):
+                    closestAnt = ant
+            distances = []
+            for ant in myAttAnts:
+                distances.append(approxDist(ant.coords, closestAnt.coords))
+            my_defense_offense_distance = (sum(distances) / len(distances))
+
+        ## irrelevant features
+
+        # average distance from workers to queen
+        distances = []
+        my_workers_queen_distance = 0
+        for worker in myWorkers:
+            distances.append(approxDist(worker.coords, myQueen.coords))
+        if len(distances) > 0:
+            my_workers_queen_distance = (sum(distances) / len(distances))
+
+        # distance between agent’s and opponent’s queen
+        # not reversing (for seeing the difference in the method + more distance better here)
+        queens_distance = approxDist(myQueen.coords, theirQueen.coords)
+
+        # multiply weights to each feature and add them to list of feature for summing them up
+        features = []
+        features.append(1) if food_difference > 0 else features.append(0)
+        features.append(1) if health_difference > 0 else features[0]
+        features.append(1) if soldier_difference > 0 else features.append(0)
+        features.append(1) if drone_difference > 0 else features.append(0)
+        features.append(1) if r_soldier_difference > 0 else features.append(0)
+        features.append(1) if offensive_capability > 0 else features.append(0)
+        features.append(1) if worker_food_distance > 0 else features.append(0)
+        features.append(1) if their_offense_queen_distance > 0 else features.append(0)
+        features.append(1) if my_offense_anthill_distance > 0 else features.append(0)
+        features.append(1) if their_offense_anthill_distance > 0 else features.append(0)
+        features.append(1) if my_offense_queen_distance > 0 else features.append(0)
+        features.append(1) if my_defense_offense_distance > 0 else features.append(0)
+        features.append(1) if my_workers_queen_distance > 0 else features.append(0)
+        features.append(1) if queens_distance > 0 else features.append(0)
+
+        return features
 
     ##
     # utility
