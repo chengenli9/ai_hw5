@@ -440,15 +440,15 @@ class AIPlayer(Player):
 
         # Calculate output error and delta
         outputError = target - finalOutput
-        outputDelta = outputError * sigmoidDerivative(finalOutput)
+        outputDelta = outputError * self.sigmoidDerivative(finalOutput)
 
         # Calculate hidden layer error and delta
         hiddenError = outputDelta.dot(outputLayerWeights[:-1].T)  # exclude the bias
-        hiddenDelta = hiddenError * sigmoidDerivative(hiddenOutput)
+        hiddenDelta = hiddenError * self.sigmoidDerivative(hiddenOutput)
 
         # Update the weights
-        outputLayerWeights += LEARNING_RATE * hiddenWithBias.T.dot(outputDelta)
-        hiddenLayerWeights += LEARNING_RATE * inputWithBias.T.dot(hiddenDelta)
+        outputLayerWeights += self.LEARNING_RATE * hiddenWithBias.T.dot(outputDelta)
+        hiddenLayerWeights += self.LEARNING_RATE * inputWithBias.T.dot(hiddenDelta)
 
         return hiddenLayerWeights, outputLayerWeights, abs(outputError[0][0])
 
