@@ -41,7 +41,7 @@ class AIPlayer(Player):
     NUM_LAYERS = 2
     HIDDEN_NODES = 8
     OUTPUT_NODES = 1
-    LEARNING_RATE = 0.5
+    LEARNING_RATE = 0.02
 
     # __init__
     # Description: Creates a new Player
@@ -354,7 +354,7 @@ class AIPlayer(Player):
         # Ensure strictly within [0,1] bounds
         return base_utility
 
-    # initalize random weights bewteen -1 and 1
+    # initalize random weights bewteen 0 and 1
     np.random.seed(1)
     hiddenLayerWeights = 2 * np.random.rand(INPUT_NODES + 1, HIDDEN_NODES) - 1  # 40 nodes
     outputLayerWeights = 2 * np.random.rand(HIDDEN_NODES + 1, OUTPUT_NODES) - 1  # 9 nodes
@@ -369,7 +369,7 @@ class AIPlayer(Player):
     ## trainNN
     # Description: calls all methods for Neural Network training
     #
-    def trainNN(self, currentState, currentNode):
+    def trainNN(self, currentState, target):
         # init training round
         epoch = 0
         errorData = []
@@ -381,8 +381,6 @@ class AIPlayer(Player):
 
             # TODO: adjust feature values to be between 0 and 1
             inputs = np.array(self.getFeatures(currentState))
-            # TODO: add call to utility function from HW2a here
-            target = currentNode['utility']
 
             # forward pass
             finalOutput, hiddenOutput = self.forwardPass(inputs, hiddenLayerWeights, outputLayerWeights)
@@ -605,7 +603,7 @@ class AIPlayer(Player):
         return {
             "move": move,
             "state": state,
-            "evaluation": (utility + depth),
+            "evaluation": self.trainNN(state, utility),
             "parent": parent
         }
 
