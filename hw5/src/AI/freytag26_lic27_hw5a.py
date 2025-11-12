@@ -51,7 +51,7 @@ class AIPlayer(Player):
     #   cpy           - whether the player is a copy (when playing itself)
     ##
     def __init__(self, inputPlayerId):
-        super(AIPlayer, self).__init__(inputPlayerId, "partA")
+        super(AIPlayer, self).__init__(inputPlayerId, "NN")
 
     ##
     # getPlacement
@@ -280,24 +280,38 @@ class AIPlayer(Player):
         # not reversing (for seeing the difference in the method + more distance better here)
         queens_distance = approxDist(myQueen.coords, theirQueen.coords)
 
-        # multiply weights to each feature and add them to list of feature for summing them up
+        # add features' values to a list
         features = []
-        features.append(1) if food_difference > 0 else features.append(0)
-        features.append(1) if health_difference > 0 else features[0]
-        features.append(1) if soldier_difference > 0 else features.append(0)
-        features.append(1) if drone_difference > 0 else features.append(0)
-        features.append(1) if r_soldier_difference > 0 else features.append(0)
-        features.append(1) if offensive_capability > 0 else features.append(0)
-        features.append(1) if worker_food_distance > 0 else features.append(0)
-        features.append(1) if their_offense_queen_distance > 0 else features.append(0)
-        features.append(1) if my_offense_anthill_distance > 0 else features.append(0)
-        features.append(1) if their_offense_anthill_distance > 0 else features.append(0)
-        features.append(1) if my_offense_queen_distance > 0 else features.append(0)
-        features.append(1) if my_defense_offense_distance > 0 else features.append(0)
-        features.append(1) if my_workers_queen_distance > 0 else features.append(0)
-        features.append(1) if queens_distance > 0 else features.append(0)
+        features.append(food_difference)
+        features.append(health_difference)
+        features.append(soldier_difference)
+        features.append(drone_difference)
+        features.append(r_soldier_difference)
+        features.append(offensive_capability)
+        features.append(worker_food_distance)
+        features.append(their_offense_queen_distance)
+        features.append(my_offense_anthill_distance)
+        features.append(their_offense_anthill_distance)
+        features.append(my_offense_queen_distance)
+        features.append(my_defense_offense_distance)
+        features.append(my_workers_queen_distance)
+        features.append(queens_distance)
 
-        return features
+        # limit the feature values to floats between 0 and 1
+        featureInputs = []
+        for feature in features:
+            match feature:
+                case f if f < 0:
+                    featureInputs.append(0)
+                case f if f > 10:
+                    featureInputs.append(1)
+                case f if f == 0:
+                    featureInputs.append(0.05)
+                case _:
+                    featureInputs.append(feature / 10)
+
+        # return adjusted feature values for NN
+        return featureInputs
 
     ##
     # utility
@@ -354,10 +368,13 @@ class AIPlayer(Player):
         # Ensure strictly within [0,1] bounds
         return base_utility
 
-    # initalize random weights bewteen 0 and 1
+    # initalize random weights bewteen -1 and 1
     np.random.seed(1)
     hiddenLayerWeights = 2 * np.random.rand(INPUT_NODES + 1, HIDDEN_NODES) - 1  # 40 nodes
     outputLayerWeights = 2 * np.random.rand(HIDDEN_NODES + 1, OUTPUT_NODES) - 1  # 9 nodes
+
+    # count epochs
+    epoch = 0
 
     # activation function
     def sigmoid(self, x):
@@ -371,52 +388,41 @@ class AIPlayer(Player):
     #
     def trainNN(self, currentState, target):
         # init training round
-        epoch = 0
-        errorData = []
+        errors = []
+        self.epoch += 1
 
-        # training loop
-        while True:
-            epoch += 1
-            errors = []
+        inputs = np.array(self.getFeatures(currentState))
 
-            # TODO: adjust feature values to be between 0 and 1
-            inputs = np.array(self.getFeatures(currentState))
+        # forward pass
+        finalOutput, hiddenOutput = self.forwardPass(inputs, self.hiddenLayerWeights, self.outputLayerWeights)
 
-            # forward pass
-            finalOutput, hiddenOutput = self.forwardPass(inputs, hiddenLayerWeights, outputLayerWeights)
+        # update the weights using backpropagation
+        self.hiddenLayerWeights, self.outputLayerWeights, error = self.backwardPass(
+            inputs, target, finalOutput, hiddenOutput,
+            self.hiddenLayerWeights, self.outputLayerWeights
+        )
+        # add to the list of errors
+        errors.append(error)
 
-            # update the weights using backpropagation
-            hiddenLayerWeights, outputLayerWeights, error = self.backwardPass(
-                inputs, target, finalOutput, hiddenOutput,
-                hiddenLayerWeights, outputLayerWeights
-            )
-            # add to the list of errors
-            errors.append(error)
-
-            averageError = np.mean(errors)
-            errorData.append(averageError)
-            print(f"Epoch {epoch}: average error = {averageError:.4f}")
-
-            # stop the loop when average error is below 0.05
-            if averageError < 0.05:
-                break
+        averageError = np.mean(errors)
+        print(f"Epoch {self.epoch}: average error = {averageError:.4f}")
 
     ## forwardPass
     # Description: returns the output of the output along with the inputs from the hidden nodes
     #
-    def forwardPass(self, inputs, hiddenLayerWeights, outputLayerWeights):
+    def forwardPass(self, inputs, hLayerWeights, oLayerWeights):
         # TODO: add bias to input
         inputWithBias = np.append(1, inputs)
 
         # hidden layer
-        hiddenInput = np.dot(inputWithBias, hiddenLayerWeights)
+        hiddenInput = np.dot(inputWithBias, hLayerWeights)
         hiddenOutput = self.sigmoid(hiddenInput)
 
         # add bias to hidden layer
         hiddenLayerWithBias = np.append(hiddenInput, 1).reshape(1, -1)
 
         # output layer
-        finalInput = np.dot(hiddenLayerWithBias, outputLayerWeights)
+        finalInput = np.dot(hiddenLayerWithBias, oLayerWeights)
         finalOutput = self.sigmoid(finalInput)
 
         # 8 hiddenOutput for every 1 finalOutput
@@ -451,7 +457,6 @@ class AIPlayer(Player):
         hiddenLayerWeights += self.LEARNING_RATE * inputWithBias.T.dot(hiddenDelta)
 
         return hiddenLayerWeights, outputLayerWeights, abs(outputError[0][0])
-
 
     ## compute_unit_composition_score
     # computes a score [0,1] based on having a balanced set of unit types
@@ -600,10 +605,11 @@ class AIPlayer(Player):
     ## Node representation
     #
     def node(self, move, state, utility, parent, depth=1):
+        self.trainNN(state, utility)
         return {
             "move": move,
             "state": state,
-            "evaluation": self.trainNN(state, utility),
+            "evaluation": utility,
             "parent": parent
         }
 
