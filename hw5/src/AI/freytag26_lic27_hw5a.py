@@ -115,7 +115,7 @@ class AIPlayer(Player):
             nodes.append(node)
 
         best = self.bestMove(nodes)
-        print((best["evaluation"] - 1.0) / 0.8)
+        #print((best["evaluation"] - 1.0) / 0.8)
         return best["move"]
 
     ##
@@ -197,7 +197,7 @@ class AIPlayer(Player):
         # average distance between the agent’s worker and food
         worker_food_distance = 0
         myWorkers = getAntList(currentState, me, (WORKER,))
-        myFoodObjs = getCurrPlayerFood(currentState)
+        myFoodObjs = getConstrList(currentState, me, (FOOD,))
         myTunnel = currentState.inventories[me].getTunnels()[0]
         distances = []
         carryingWorkers = 0
