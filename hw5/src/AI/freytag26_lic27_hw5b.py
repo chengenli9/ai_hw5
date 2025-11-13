@@ -5,6 +5,7 @@ import numpy as np
 import random
 import sys
 import os
+import matplotlib.pyplot as plt
 
 sys.path.append("..")
 from Player import *
@@ -14,17 +15,6 @@ from Ant import UNIT_STATS
 from Move import Move
 from GameState import *
 from AIPlayerUtils import *
-
-
-# import matplotlib.pyplot as plt
-
-# # --- plot to visualize growth ---
-# plt.plot(errorData)
-# plt.title("Neural Network Learning Curve")
-# plt.xlabel("Epoch")
-# plt.ylabel("Average Error")
-# plt.grid(True)
-# plt.show()
 
 
 ##
@@ -40,7 +30,7 @@ class AIPlayer(Player):
     # initalize how many nodes we want for the NN
     INPUT_NODES = 14
     NUM_LAYERS = 2
-    HIDDEN_NODES = 12
+    HIDDEN_NODES = 10 
     OUTPUT_NODES = 1
     LEARNING_RATE = 0.02
 
@@ -56,7 +46,9 @@ class AIPlayer(Player):
         super(AIPlayer, self).__init__(inputPlayerId, "NN")
 
         self.epoch = 0
-        self.hiddenLayerWeights, self.outputLayerWeights = self.loadData()
+        # self.hiddenLayerWeights, self.outputLayerWeights = self.loadData() # ignore for now
+
+        self.training = False
 
     ##
     # getPlacement
@@ -115,15 +107,37 @@ class AIPlayer(Player):
 
         for move in moves:
             nextState = getNextState(currentState, move)
-            utility_score = self.utility(currentState, nextState)
-            self.trainNN(currentState, utility_score)
+            utility_score = (self.utility(currentState, nextState) / 0.92) if self.training else self.neuralNetworkUtility(currentState)
+            # self.trainNN(currentState, utility_score)
             node = self.node(move, nextState, utility_score, None)
             nodes.append(node)
 
         best = self.bestMove(nodes)
-        #print((best["evaluation"] - 1.0) / 0.8)
+        normalUtility = (best["evaluation"]) / 0.92
+        data = self.getFeatures(currentState)
+        data.append(normalUtility)
+        print(f"{data}")
+
+        # save features and expected utility to npz file
+        filename = "training_data.npz"
+        features = np.array(data)
+
+        # Try to load existing data
+        if os.path.exists(filename):
+            data = np.load(filename, allow_pickle=True)
+            featureData = data["features"]
+            data.close()  # close file handle to avoid warning
+            # Append a new row
+            featureData = np.vstack((featureData, features))
+        else:
+            # First time: start with 1 row
+            featureData = np.array([features])
+
+        # Save updated data back
+        np.savez(filename, features=featureData)
 
         return best["move"]
+    
 
     ##
     # getAttack
@@ -179,19 +193,26 @@ class AIPlayer(Player):
         averageError = np.mean(errors)
         print(f"Epoch {self.epoch}: average error = {averageError:.4f}")
         
-        # save data function 
-        def saveData(hWeights, oWeights, filename="agent_learning_data.npz"):
-            np.savez(filename, 
-                     hiddenLayerWeights=hWeights,
-                     outputLayerWeights=oWeights,
-                     epoch=self.epoch
-                     )
-            print(f"saved weights to {filename}")
-
-        # save the data
-        saveData(self.hiddenLayerWeights, self.outputLayerWeights)
+       
 
 
+    ## utility function for after NN training is finished
+    # we get our final weights
+    # 
+    def neuralNetworkUtility(self, currentState):
+        # load hiddenLayerWeights and outputLayerWeights from "trained_weights.npz"
+        try:
+            weights = np.load("trained_weights.npz")
+            hiddenLayerWeights = weights['hidden_weights']
+            outputLayerWeights = weights['output_weights']
+        except FileNotFoundError:
+            raise FileNotFoundError("trained_weights.npz not found.")
+
+        inputs = self.getFeatures(currentState)
+        
+        utility, _ = self.forwardPass(inputs, hiddenLayerWeights, outputLayerWeights)
+
+        return utility[0][0]
 
 
 
@@ -200,23 +221,23 @@ class AIPlayer(Player):
     ## forwardPass
     # Description: returns the output of the output along with the inputs from the hidden nodes
     #
-    def forwardPass(self, inputs, hLayerWeights, oLayerWeights):
-        # TODO: add bias to input
-        inputWithBias = np.append(1, inputs)
+    def forwardPass(self, inputs, hiddenLayerWeights, outputLayerWeights):
+        # add bias to input
+        inputWithBias = np.append(inputs, 1).reshape(1, -1)
 
         # hidden layer
-        hiddenInput = np.dot(inputWithBias, hLayerWeights)
-        hiddenOutput = self.sigmoid(hiddenInput)
+        hiddenInput = np.dot(inputWithBias, hiddenLayerWeights)
+        hiddenOutput = self.sigmoid(hiddenInput) 
 
         # add bias to hidden layer
-        hiddenLayerWithBias = np.append(hiddenInput, 1).reshape(1, -1)
+        hiddenLayerWithBias = np.append(hiddenOutput, 1).reshape(1, -1)
 
         # output layer
-        finalInput = np.dot(hiddenLayerWithBias, oLayerWeights)
+        finalInput = np.dot(hiddenLayerWithBias, outputLayerWeights)
         finalOutput = self.sigmoid(finalInput)
 
         # 8 hiddenOutput for every 1 finalOutput
-        return finalOutput, hiddenOutput
+        return finalOutput, hiddenOutput 
 
         ## backwardPass
 
@@ -247,6 +268,7 @@ class AIPlayer(Player):
         hiddenLayerWeights += self.LEARNING_RATE * inputWithBias.T.dot(hiddenDelta)
 
         return hiddenLayerWeights, outputLayerWeights, abs(outputError[0][0])
+
 
     def getFeatures(self, currentState):
         me = currentState.whoseTurn
@@ -450,10 +472,15 @@ class AIPlayer(Player):
         normalized_aggro = max(0, min(1, aggro_score))  # assuming already 0-1
 
         # Weights (should sum to 1.0 for proper scaling)
-        food_w = 0.40  # Food is most important for winning
-        route_w = 0.20  # Efficiency matters
-        units_w = 0.25  # Unit composition important
-        aggro_w = 0.15  # Military presence
+        # food_w = 0.40  # Food is most important for winning
+        # route_w = 0.20  # Efficiency matters
+        # units_w = 0.25  # Unit composition important
+        # aggro_w = 0.15  # Military presence
+
+        route_w = 0.10
+        food_w = 0.20
+        units_w = 0.30
+        aggro_w = 0.40
 
         # Weighted combination (results in 0-1 scale)
         base_utility = (food_w * food_score +
@@ -619,21 +646,21 @@ class AIPlayer(Player):
 
         return clamp(avg_aggression)
 
-    # load previous weights
-    def loadData(self, filename="agent_learning_data.npz"):
-        if os.path.exists(filename):
-            data = np.load(filename)
-            hiddenLayerWeights = data["hiddenLayerWeights"]
-            outputLayerWeights = data["outputLayerWeights"]
-            self.epoch = int(data["epoch"])
-            print(f"Loaded saved model from {filename} (epoch {self.epoch})")
-        else:
-            np.random.seed(1)
-            hiddenLayerWeights = np.random.rand(self.INPUT_NODES + 1, self.HIDDEN_NODES)   # 40 nodes
-            outputLayerWeights = np.random.rand(self.HIDDEN_NODES + 1, self.OUTPUT_NODES)   # 9 nodes
-            print(" No saved model found. Starting fresh.")
+    # # load previous weights
+    # def loadData(self, filename="agent_learning_data.npz"):
+    #     if os.path.exists(filename):
+    #         data = np.load(filename)
+    #         hiddenLayerWeights = data["hiddenLayerWeights"]
+    #         outputLayerWeights = data["outputLayerWeights"]
+    #         self.epoch = int(data["epoch"])
+    #         print(f"Loaded saved model from {filename} (epoch {self.epoch})")
+    #     else:
+    #         np.random.seed(1)
+    #         hiddenLayerWeights = np.random.rand(self.INPUT_NODES + 1, self.HIDDEN_NODES)   # 40 nodes
+    #         outputLayerWeights = np.random.rand(self.HIDDEN_NODES + 1, self.OUTPUT_NODES)   # 9 nodes
+    #         print(" No saved model found. Starting fresh.")
 
-        return hiddenLayerWeights, outputLayerWeights
+    #     return hiddenLayerWeights, outputLayerWeights
     
 
 
