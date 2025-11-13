@@ -4,6 +4,7 @@
 import numpy as np
 import random
 import sys
+import os
 
 sys.path.append("..")
 from Player import *
@@ -39,9 +40,10 @@ class AIPlayer(Player):
     # initalize how many nodes we want for the NN
     INPUT_NODES = 14
     NUM_LAYERS = 2
-    HIDDEN_NODES = 8
+    HIDDEN_NODES = 12
     OUTPUT_NODES = 1
     LEARNING_RATE = 0.02
+
 
     # __init__
     # Description: Creates a new Player
@@ -52,6 +54,9 @@ class AIPlayer(Player):
     ##
     def __init__(self, inputPlayerId):
         super(AIPlayer, self).__init__(inputPlayerId, "NN")
+
+        self.epoch = 0
+        self.hiddenLayerWeights, self.outputLayerWeights = self.loadData()
 
     ##
     # getPlacement
@@ -111,11 +116,13 @@ class AIPlayer(Player):
         for move in moves:
             nextState = getNextState(currentState, move)
             utility_score = self.utility(currentState, nextState)
+            self.trainNN(currentState, utility_score)
             node = self.node(move, nextState, utility_score, None)
             nodes.append(node)
 
         best = self.bestMove(nodes)
         #print((best["evaluation"] - 1.0) / 0.8)
+
         return best["move"]
 
     ##
@@ -132,16 +139,114 @@ class AIPlayer(Player):
     def registerWin(self, hasWon):
         pass
 
-        ##
-        # calculateStateUtility
-        # Description: Calculates the utility value for a given game state by converting heuristic to utility
-        #
-        # Parameters:
-        #   parentState - The previous game state (GameState)
-        #   currentState - The current game state to evaluate (GameState)
-        #
-        # Return: A utility score representing state favorability
-        ##
+
+
+    # ---------- Neural Network Stuff ------------
+
+    # # count epochs
+    # epoch = 0
+
+    # activation function
+    def sigmoid(self, x):
+        return 1.0 / (1.0 + np.exp(-x))
+
+    def sigmoidDerivative(self, x):
+        return x * (1.0 - x)
+    
+
+    ## trainNN
+    # Description: calls all methods for Neural Network training
+    #
+    def trainNN(self, currentState, target):
+        # init training round
+        errors = []
+        self.epoch += 1
+
+        # inputs are the gameState features
+        inputs = np.array(self.getFeatures(currentState))
+
+        # forward pass
+        finalOutput, hiddenOutput = self.forwardPass(inputs, self.hiddenLayerWeights, self.outputLayerWeights)
+
+        # update the weights using backpropagation
+        self.hiddenLayerWeights, self.outputLayerWeights, error = self.backwardPass(
+            inputs, target, finalOutput, hiddenOutput,
+            self.hiddenLayerWeights, self.outputLayerWeights
+        )
+        # add to the list of errors
+        errors.append(error)
+
+        averageError = np.mean(errors)
+        print(f"Epoch {self.epoch}: average error = {averageError:.4f}")
+        
+        # save data function 
+        def saveData(hWeights, oWeights, filename="agent_learning_data.npz"):
+            np.savez(filename, 
+                     hiddenLayerWeights=hWeights,
+                     outputLayerWeights=oWeights,
+                     epoch=self.epoch
+                     )
+            print(f"saved weights to {filename}")
+
+        # save the data
+        saveData(self.hiddenLayerWeights, self.outputLayerWeights)
+
+
+
+
+
+
+
+    ## forwardPass
+    # Description: returns the output of the output along with the inputs from the hidden nodes
+    #
+    def forwardPass(self, inputs, hLayerWeights, oLayerWeights):
+        # TODO: add bias to input
+        inputWithBias = np.append(1, inputs)
+
+        # hidden layer
+        hiddenInput = np.dot(inputWithBias, hLayerWeights)
+        hiddenOutput = self.sigmoid(hiddenInput)
+
+        # add bias to hidden layer
+        hiddenLayerWithBias = np.append(hiddenInput, 1).reshape(1, -1)
+
+        # output layer
+        finalInput = np.dot(hiddenLayerWithBias, oLayerWeights)
+        finalOutput = self.sigmoid(finalInput)
+
+        # 8 hiddenOutput for every 1 finalOutput
+        return finalOutput, hiddenOutput
+
+        ## backwardPass
+
+    # Description: returns the updated weight values for hiddenlayer and outputlayers.
+    #               Also returns the output error after one iteration
+    #
+    # source: https://www.geeksforgeeks.org/machine-learning/backpropagation-in-neural-network/ and ChatGPT
+    #
+    def backwardPass(self, inputs, target, finalOutput, hiddenOutput,
+                     hiddenLayerWeights, outputLayerWeights):
+
+        hiddenOutput = hiddenOutput.reshape(1, -1)
+
+        # Add bias to inputs and hidden layer
+        inputWithBias = np.append(inputs, 1).reshape(1, -1)
+        hiddenWithBias = np.append(hiddenOutput, 1).reshape(1, -1)
+
+        # Calculate output error and delta
+        outputError = target - finalOutput
+        outputDelta = outputError * self.sigmoidDerivative(finalOutput)
+
+        # Calculate hidden layer error and delta
+        hiddenError = outputDelta.dot(outputLayerWeights[:-1].T)  # exclude the bias
+        hiddenDelta = hiddenError * self.sigmoidDerivative(hiddenOutput)
+
+        # Update the weights
+        outputLayerWeights += self.LEARNING_RATE * hiddenWithBias.T.dot(outputDelta)
+        hiddenLayerWeights += self.LEARNING_RATE * inputWithBias.T.dot(hiddenDelta)
+
+        return hiddenLayerWeights, outputLayerWeights, abs(outputError[0][0])
 
     def getFeatures(self, currentState):
         me = currentState.whoseTurn
@@ -368,95 +473,7 @@ class AIPlayer(Player):
         # Ensure strictly within [0,1] bounds
         return base_utility
 
-    # initalize random weights bewteen -1 and 1
-    np.random.seed(1)
-    hiddenLayerWeights = 2 * np.random.rand(INPUT_NODES + 1, HIDDEN_NODES) - 1  # 40 nodes
-    outputLayerWeights = 2 * np.random.rand(HIDDEN_NODES + 1, OUTPUT_NODES) - 1  # 9 nodes
-
-    # count epochs
-    epoch = 0
-
-    # activation function
-    def sigmoid(self, x):
-        return 1.0 / (1.0 + np.exp(-x))
-
-    def sigmoidDerivative(self, x):
-        return x * (1.0 - x)
-
-    ## trainNN
-    # Description: calls all methods for Neural Network training
-    #
-    def trainNN(self, currentState, target):
-        # init training round
-        errors = []
-        self.epoch += 1
-
-        inputs = np.array(self.getFeatures(currentState))
-
-        # forward pass
-        finalOutput, hiddenOutput = self.forwardPass(inputs, self.hiddenLayerWeights, self.outputLayerWeights)
-
-        # update the weights using backpropagation
-        self.hiddenLayerWeights, self.outputLayerWeights, error = self.backwardPass(
-            inputs, target, finalOutput, hiddenOutput,
-            self.hiddenLayerWeights, self.outputLayerWeights
-        )
-        # add to the list of errors
-        errors.append(error)
-
-        averageError = np.mean(errors)
-        print(f"Epoch {self.epoch}: average error = {averageError:.4f}")
-
-    ## forwardPass
-    # Description: returns the output of the output along with the inputs from the hidden nodes
-    #
-    def forwardPass(self, inputs, hLayerWeights, oLayerWeights):
-        # TODO: add bias to input
-        inputWithBias = np.append(1, inputs)
-
-        # hidden layer
-        hiddenInput = np.dot(inputWithBias, hLayerWeights)
-        hiddenOutput = self.sigmoid(hiddenInput)
-
-        # add bias to hidden layer
-        hiddenLayerWithBias = np.append(hiddenInput, 1).reshape(1, -1)
-
-        # output layer
-        finalInput = np.dot(hiddenLayerWithBias, oLayerWeights)
-        finalOutput = self.sigmoid(finalInput)
-
-        # 8 hiddenOutput for every 1 finalOutput
-        return finalOutput, hiddenOutput
-
-        ## backwardPass
-
-    # Description: returns the updated weight values for hiddenlayer and outputlayers.
-    #               Also returns the output error after one iteration
-    #
-    # source: https://www.geeksforgeeks.org/machine-learning/backpropagation-in-neural-network/ and ChatGPT
-    #
-    def backwardPass(self, inputs, target, finalOutput, hiddenOutput,
-                     hiddenLayerWeights, outputLayerWeights):
-
-        hiddenOutput = hiddenOutput.reshape(1, -1)
-
-        # Add bias to inputs and hidden layer
-        inputWithBias = np.append(inputs, 1).reshape(1, -1)
-        hiddenWithBias = np.append(hiddenOutput, 1).reshape(1, -1)
-
-        # Calculate output error and delta
-        outputError = target - finalOutput
-        outputDelta = outputError * self.sigmoidDerivative(finalOutput)
-
-        # Calculate hidden layer error and delta
-        hiddenError = outputDelta.dot(outputLayerWeights[:-1].T)  # exclude the bias
-        hiddenDelta = hiddenError * self.sigmoidDerivative(hiddenOutput)
-
-        # Update the weights
-        outputLayerWeights += self.LEARNING_RATE * hiddenWithBias.T.dot(outputDelta)
-        hiddenLayerWeights += self.LEARNING_RATE * inputWithBias.T.dot(hiddenDelta)
-
-        return hiddenLayerWeights, outputLayerWeights, abs(outputError[0][0])
+    
 
     ## compute_unit_composition_score
     # computes a score [0,1] based on having a balanced set of unit types
@@ -602,10 +619,28 @@ class AIPlayer(Player):
 
         return clamp(avg_aggression)
 
+    # load previous weights
+    def loadData(self, filename="agent_learning_data.npz"):
+        if os.path.exists(filename):
+            data = np.load(filename)
+            hiddenLayerWeights = data["hiddenLayerWeights"]
+            outputLayerWeights = data["outputLayerWeights"]
+            self.epoch = int(data["epoch"])
+            print(f"Loaded saved model from {filename} (epoch {self.epoch})")
+        else:
+            np.random.seed(1)
+            hiddenLayerWeights = np.random.rand(self.INPUT_NODES + 1, self.HIDDEN_NODES)   # 40 nodes
+            outputLayerWeights = np.random.rand(self.HIDDEN_NODES + 1, self.OUTPUT_NODES)   # 9 nodes
+            print(" No saved model found. Starting fresh.")
+
+        return hiddenLayerWeights, outputLayerWeights
+    
+
+
+
     ## Node representation
     #
     def node(self, move, state, utility, parent, depth=1):
-        self.trainNN(state, utility)
         return {
             "move": move,
             "state": state,
@@ -617,6 +652,10 @@ class AIPlayer(Player):
     #
     def bestMove(self, nodes):
         return max(nodes, key=lambda x: x["evaluation"])
+    
+
+
+
 
 
 # clamp function for capping min and max values
