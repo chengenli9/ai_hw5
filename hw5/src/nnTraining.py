@@ -6,18 +6,18 @@ import random
 import matplotlib.pyplot as plt
 
 # initalize how many nodes we want for the NN
-INPUT_NODES = 14
-HIDDEN_NODES = 10
+INPUT_NODES = 4
+HIDDEN_NODES = 8
 OUTPUT_NODES = 1
-LEARNING_RATE = 0.01
+LEARNING_RATE = 0.5
 
 # # initalize random weights bewteen 0 and 1
-# np.random.seed(1)
-# hiddenLayerWeights = np.random.rand(INPUT_NODES + 1, HIDDEN_NODES) 
-# outputLayerWeights = np.random.rand(HIDDEN_NODES + 1, OUTPUT_NODES) 
+np.random.seed(1)
+hiddenLayerWeights = np.random.rand(INPUT_NODES + 1, HIDDEN_NODES) 
+outputLayerWeights = np.random.rand(HIDDEN_NODES + 1, OUTPUT_NODES) 
 # Xavier/Glorot initialization instead of uniform [0,1]
-hiddenLayerWeights = np.random.randn(INPUT_NODES + 1, HIDDEN_NODES) * np.sqrt(2.0 / (INPUT_NODES + HIDDEN_NODES))
-outputLayerWeights = np.random.randn(HIDDEN_NODES + 1, OUTPUT_NODES) * np.sqrt(2.0 / (HIDDEN_NODES + OUTPUT_NODES))
+# hiddenLayerWeights = np.random.randn(INPUT_NODES + 1, HIDDEN_NODES) * np.sqrt(2.0 / (INPUT_NODES + HIDDEN_NODES))
+# outputLayerWeights = np.random.randn(HIDDEN_NODES + 1, OUTPUT_NODES) * np.sqrt(2.0 / (HIDDEN_NODES + OUTPUT_NODES))
 
 
 # training data
@@ -124,7 +124,7 @@ while True:
     errors = []
 
     # randomly pick 10 examples
-    for i in range(50):
+    for i in range(16):
         idx = random.randint(0, len(X) - 1)
         inputs = X[idx]
         target = Y[idx]

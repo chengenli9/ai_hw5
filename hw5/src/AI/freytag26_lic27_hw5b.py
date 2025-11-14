@@ -16,6 +16,189 @@ from Move import Move
 from GameState import *
 from AIPlayerUtils import *
 
+# make sure load and save files in the same directory 
+AI_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+
+# # initalize how many nodes we want for the NN
+INPUT_NODES = 14
+#NUM_LAYERS = 2
+HIDDEN_NODES = 10
+OUTPUT_NODES = 1
+LEARNING_RATE = 0.1
+
+# np.random.seed(1)
+# hiddenLayerWeights = np.random.rand(INPUT_NODES + 1, HIDDEN_NODES) 
+# outputLayerWeights = np.random.rand(HIDDEN_NODES + 1, OUTPUT_NODES) 
+
+# load the weights
+weights_file = os.path.join(AI_DIR, "trained_weights.npz")
+if os.path.exists(weights_file):
+    weights = np.load(weights_file)
+    hiddenLayerWeights = weights['hidden_weights']
+    outputLayerWeights = weights['output_weights']
+    print(f"Loaded weights from {weights_file}")
+else:
+    hiddenLayerWeights = np.random.rand(INPUT_NODES + 1, HIDDEN_NODES) 
+    outputLayerWeights = np.random.rand(HIDDEN_NODES + 1, OUTPUT_NODES)
+    np.savez(weights_file, 
+             hidden_weights=hiddenLayerWeights,
+             output_weights=outputLayerWeights)
+    print(f"Initialized new weights in {weights_file}")
+
+# Load training data
+data_file = os.path.join(AI_DIR, "training_data.npz")
+if os.path.exists(data_file):
+    data = np.load(data_file)
+    features = data["features"]
+    print(f"Loaded training data from {data_file}")
+else:
+    features = np.array([]).reshape(0, INPUT_NODES + 1)
+    np.savez(data_file, features=features)
+    print(f"Created new training data file: {data_file}")
+
+
+
+# # activation function
+def sigmoid(x):
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+def sigmoidDerivative(x):
+    return x * (1.0 - x)
+
+
+# ## forwardPass
+# # Description: returns the output of the output along with the inputs from the hidden nodes
+# #
+def forwardPass(inputs, hiddenLayerWeights, outputLayerWeights):
+    # add bias to input
+    inputWithBias = np.append(inputs, 1).reshape(1, -1)
+
+    # hidden layer
+    hiddenInput = np.dot(inputWithBias, hiddenLayerWeights)
+    hiddenOutput = sigmoid(hiddenInput) 
+
+    # add bias to hidden layer
+    hiddenLayerWithBias = np.append(hiddenOutput, 1).reshape(1, -1)
+
+    # output layer
+    finalInput = np.dot(hiddenLayerWithBias, outputLayerWeights)
+    finalOutput = sigmoid(finalInput)
+
+    # 8 hiddenOutput for every 1 finalOutput
+    return finalOutput, hiddenOutput 
+
+
+
+
+
+# ## backwardPass
+# # Description: returns the updated weight values for hiddenlayer and outputlayers. 
+# #               Also returns the output error after one iteration
+# # 
+# # source: https://www.geeksforgeeks.org/machine-learning/backpropagation-in-neural-network/ and ChatGPT
+# #
+def backwardPass(inputs, target, finalOutput, hiddenOutput,
+                 hiddenLayerWeights, outputLayerWeights):
+    
+    hiddenOutput = hiddenOutput.reshape(1, -1)
+
+    # Add bias to inputs and hidden layer
+    inputWithBias = np.append(inputs, 1).reshape(1, -1)
+    hiddenWithBias = np.append(hiddenOutput, 1).reshape(1, -1)
+
+    # Calculate output error and delta 
+    outputError = target - finalOutput
+    outputDelta = outputError * sigmoidDerivative(finalOutput)
+
+    # Calculate hidden layer error and delta 
+    hiddenError = outputDelta.dot(outputLayerWeights[:-1].T) # exclude the bias
+    hiddenDelta = hiddenError * sigmoidDerivative(hiddenOutput)
+
+    # Update the weights 
+    outputLayerWeights += LEARNING_RATE * hiddenWithBias.T.dot(outputDelta)
+    hiddenLayerWeights += LEARNING_RATE * inputWithBias.T.dot(hiddenDelta)
+
+    return hiddenLayerWeights, outputLayerWeights, abs(outputError[0][0]) 
+
+
+
+def trainNN():
+    global hiddenLayerWeights, outputLayerWeights
+
+    # Reload training data collected during this game
+    data_file = os.path.join(AI_DIR, "training_data.npz")
+    if not os.path.exists(data_file):
+        print("No training data found!")
+        return
+    
+    data = np.load(data_file)
+    features = data["features"]
+    
+    # Check if we have data
+    if len(features) == 0:
+        print("No training data collected this game!")
+        return
+
+    # # split into X (inputs) Y (outputs)
+    X = features[:, :-1] # first 14
+    Y = features[:, -1:] # last column as target
+
+
+    epoch = 0
+    errorData = []
+
+
+    # training loop
+    while True:
+        epoch += 1
+        errors = []
+
+        # shuffles all rows each epoch
+        indices = np.random.permutation(len(X) - 30)
+
+        # randomly pick 10 examples
+        for idx in indices:
+            #idx = random.randint(0, len(X) - 1)
+            inputs = X[idx]
+            target = Y[idx]
+
+            # forward pass
+            finalOutput, hiddenOutput = forwardPass(inputs, hiddenLayerWeights, outputLayerWeights)
+
+            # update the weights using backpropagation 
+            hiddenLayerWeights, outputLayerWeights, error = backwardPass(
+                inputs, target, finalOutput, hiddenOutput,
+                hiddenLayerWeights, outputLayerWeights
+            )
+            # add to the list of errors
+            errors.append(error) 
+
+        averageError = np.mean(errors)
+        errorData.append(averageError)
+        print(f"Epoch {epoch}: average error = {averageError:.4f}")
+
+
+        # stop the loop when average error is below 0.05
+        if averageError < 0.00001 or epoch >= 10000:
+            print("training complete!")
+
+            break
+        
+
+    weights_file = os.path.join(AI_DIR, "trained_weights.npz")
+
+    # --- save the weights to a npz file ---
+    np.savez(weights_file, 
+            hidden_weights=hiddenLayerWeights, 
+            output_weights=outputLayerWeights)
+    print("Weights saved to 'trained_weights.npz'")
+
+    
+
+
 
 ##
 # AIPlayer
@@ -27,12 +210,6 @@ from AIPlayerUtils import *
 #   playerId - The id of the player.
 ##
 class AIPlayer(Player):
-    # initalize how many nodes we want for the NN
-    INPUT_NODES = 14
-    NUM_LAYERS = 2
-    HIDDEN_NODES = 10 
-    OUTPUT_NODES = 1
-    LEARNING_RATE = 0.02
 
 
     # __init__
@@ -48,7 +225,7 @@ class AIPlayer(Player):
         self.epoch = 0
         # self.hiddenLayerWeights, self.outputLayerWeights = self.loadData() # ignore for now
 
-        self.training = False
+        self.isTraining = True
 
     ##
     # getPlacement
@@ -102,24 +279,77 @@ class AIPlayer(Player):
     # Return: The Move with the best evaluation
     ##
     def getMove(self, currentState):
+        # moves = listAllLegalMoves(currentState)
+        # nodes = []
+
+        # for move in moves:
+        #     nextState = getNextState(currentState, move)
+        #     utility_score = (self.utility(currentState, nextState) / 0.92) if self.isTraining else self.neuralNetworkUtility(nextState)
+        #     # self.trainNN(currentState, utility_score)
+        #     node = self.node(move, nextState, utility_score, None)
+        #     nodes.append(node)
+
+        # best = self.bestMove(nodes)
         moves = listAllLegalMoves(currentState)
         nodes = []
+        
+        # Current state scores
+        cur_route_score = self.compute_route_score(currentState)
+        myId = currentState.whoseTurn
+        cur_food_frac = currentState.inventories[myId].foodCount / float(FOOD_GOAL)
+        cur_unit_score = self.compute_unit_composition_score(currentState)
+        cur_aggro_score = self.compute_rsoldier_aggression_score(currentState)
+        
+        # Weights
+        route_w = 0.10
+        food_w = 0.20
+        units_w = 0.30
+        aggro_w = 0.40
 
         for move in moves:
             nextState = getNextState(currentState, move)
-            utility_score = (self.utility(currentState, nextState) / 0.92) if self.training else self.neuralNetworkUtility(currentState)
-            # self.trainNN(currentState, utility_score)
-            node = self.node(move, nextState, utility_score, None)
-            nodes.append(node)
+            next_route_score = self.compute_route_score(nextState)
+            next_food_frac = nextState.inventories[myId].foodCount / float(FOOD_GOAL)
+            
+            # Route delta
+            route_term = next_route_score - cur_route_score
+            if route_term > 0.25:
+                route_term = 0.25
+            elif route_term < -0.25:
+                route_term = -0.25
+            
+            delta = route_w * route_term + food_w * (next_food_frac - cur_food_frac)
 
+            # Units delta
+            next_unit_score = self.compute_unit_composition_score(nextState)
+            delta += units_w * (next_unit_score - cur_unit_score)
+            
+            # Aggression delta
+            next_aggro_score = self.compute_rsoldier_aggression_score(nextState)
+            delta += aggro_w * (next_aggro_score - cur_aggro_score)
+            
+            # Food completion bonus
+            cur_food = currentState.inventories[myId].foodCount
+            next_food = nextState.inventories[myId].foodCount
+            food_gain = next_food - cur_food
+            if food_gain > 0:
+                delta += 0.10 * food_gain
+            
+            node = self.node(move, nextState, delta, None)
+            nodes.append(node)
+        
         best = self.bestMove(nodes)
-        normalUtility = (best["evaluation"]) / 0.92
+        # print(self.utility(currentState) / 0.8)
+        # return best["move"]
+
+        normalUtility = (best['evaluation']) 
         data = self.getFeatures(currentState)
         data.append(normalUtility)
-        print(f"{data}")
+        #print(f"{data}")
 
-        # save features and expected utility to npz file
-        filename = "training_data.npz"
+        # Get the directory where this AI file is located
+        ai_dir = os.path.dirname(os.path.abspath(__file__))
+        filename = os.path.join(ai_dir, "training_data.npz")
         features = np.array(data)
 
         # Try to load existing data
@@ -151,7 +381,23 @@ class AIPlayer(Player):
     # registerWin
     #
     def registerWin(self, hasWon):
-        pass
+        print("Game over! Training neural network...")
+    
+        # Train the NN with collected data from this game
+        if self.isTraining == True:
+            trainNN()
+            
+            # Clear the training data file for next game
+            ai_dir = os.path.dirname(os.path.abspath(__file__))
+            data_file = os.path.join(ai_dir, "training_data.npz")
+            features = np.array([]).reshape(0, INPUT_NODES + 1)
+            np.savez(data_file, features=features)
+            print(f"Cleared training data for next game")
+        
+        return hasWon
+
+
+    
 
 
 
@@ -161,37 +407,37 @@ class AIPlayer(Player):
     # epoch = 0
 
     # activation function
-    def sigmoid(self, x):
-        return 1.0 / (1.0 + np.exp(-x))
+    # def sigmoid(self, x):
+    #     return 1.0 / (1.0 + np.exp(-x))
 
-    def sigmoidDerivative(self, x):
-        return x * (1.0 - x)
+    # def sigmoidDerivative(self, x):
+    #     return x * (1.0 - x)
     
 
     ## trainNN
     # Description: calls all methods for Neural Network training
     #
-    def trainNN(self, currentState, target):
-        # init training round
-        errors = []
-        self.epoch += 1
+    # def trainNN(self, currentState, target):
+    #     # init training round
+    #     errors = []
+    #     self.epoch += 1
 
-        # inputs are the gameState features
-        inputs = np.array(self.getFeatures(currentState))
+    #     # inputs are the gameState features
+    #     inputs = np.array(self.getFeatures(currentState))
 
-        # forward pass
-        finalOutput, hiddenOutput = self.forwardPass(inputs, self.hiddenLayerWeights, self.outputLayerWeights)
+    #     # forward pass
+    #     finalOutput, hiddenOutput = self.forwardPass(inputs, self.hiddenLayerWeights, self.outputLayerWeights)
 
-        # update the weights using backpropagation
-        self.hiddenLayerWeights, self.outputLayerWeights, error = self.backwardPass(
-            inputs, target, finalOutput, hiddenOutput,
-            self.hiddenLayerWeights, self.outputLayerWeights
-        )
-        # add to the list of errors
-        errors.append(error)
+    #     # update the weights using backpropagation
+    #     self.hiddenLayerWeights, self.outputLayerWeights, error = self.backwardPass(
+    #         inputs, target, finalOutput, hiddenOutput,
+    #         self.hiddenLayerWeights, self.outputLayerWeights
+    #     )
+    #     # add to the list of errors
+    #     errors.append(error)
 
-        averageError = np.mean(errors)
-        print(f"Epoch {self.epoch}: average error = {averageError:.4f}")
+    #     averageError = np.mean(errors)
+    #     print(f"Epoch {self.epoch}: average error = {averageError:.4f}")
         
        
 
@@ -202,74 +448,29 @@ class AIPlayer(Player):
     def neuralNetworkUtility(self, currentState):
         # load hiddenLayerWeights and outputLayerWeights from "trained_weights.npz"
         try:
-            weights = np.load("trained_weights.npz")
+            ai_dir = os.path.dirname(os.path.abspath(__file__))
+
+            filename = os.path.join(ai_dir, "trained_weights.npz")
+            weights = np.load(filename)
             hiddenLayerWeights = weights['hidden_weights']
             outputLayerWeights = weights['output_weights']
         except FileNotFoundError:
             raise FileNotFoundError("trained_weights.npz not found.")
 
         inputs = self.getFeatures(currentState)
+        inputs = np.array(inputs)
+
         
-        utility, _ = self.forwardPass(inputs, hiddenLayerWeights, outputLayerWeights)
+        utility, _ = forwardPass(inputs, hiddenLayerWeights, outputLayerWeights)
+        print(utility[0][0].item())
 
-        return utility[0][0]
-
-
-
+        return utility[0][0].item() # convert back to regular float
 
 
-    ## forwardPass
-    # Description: returns the output of the output along with the inputs from the hidden nodes
-    #
-    def forwardPass(self, inputs, hiddenLayerWeights, outputLayerWeights):
-        # add bias to input
-        inputWithBias = np.append(inputs, 1).reshape(1, -1)
-
-        # hidden layer
-        hiddenInput = np.dot(inputWithBias, hiddenLayerWeights)
-        hiddenOutput = self.sigmoid(hiddenInput) 
-
-        # add bias to hidden layer
-        hiddenLayerWithBias = np.append(hiddenOutput, 1).reshape(1, -1)
-
-        # output layer
-        finalInput = np.dot(hiddenLayerWithBias, outputLayerWeights)
-        finalOutput = self.sigmoid(finalInput)
-
-        # 8 hiddenOutput for every 1 finalOutput
-        return finalOutput, hiddenOutput 
-
-        ## backwardPass
-
-    # Description: returns the updated weight values for hiddenlayer and outputlayers.
-    #               Also returns the output error after one iteration
-    #
-    # source: https://www.geeksforgeeks.org/machine-learning/backpropagation-in-neural-network/ and ChatGPT
-    #
-    def backwardPass(self, inputs, target, finalOutput, hiddenOutput,
-                     hiddenLayerWeights, outputLayerWeights):
-
-        hiddenOutput = hiddenOutput.reshape(1, -1)
-
-        # Add bias to inputs and hidden layer
-        inputWithBias = np.append(inputs, 1).reshape(1, -1)
-        hiddenWithBias = np.append(hiddenOutput, 1).reshape(1, -1)
-
-        # Calculate output error and delta
-        outputError = target - finalOutput
-        outputDelta = outputError * self.sigmoidDerivative(finalOutput)
-
-        # Calculate hidden layer error and delta
-        hiddenError = outputDelta.dot(outputLayerWeights[:-1].T)  # exclude the bias
-        hiddenDelta = hiddenError * self.sigmoidDerivative(hiddenOutput)
-
-        # Update the weights
-        outputLayerWeights += self.LEARNING_RATE * hiddenWithBias.T.dot(outputDelta)
-        hiddenLayerWeights += self.LEARNING_RATE * inputWithBias.T.dot(hiddenDelta)
-
-        return hiddenLayerWeights, outputLayerWeights, abs(outputError[0][0])
 
 
+
+    # get input features
     def getFeatures(self, currentState):
         me = currentState.whoseTurn
         them = 1 - me
@@ -435,70 +636,167 @@ class AIPlayer(Player):
                 case f if f == 0:
                     featureInputs.append(0.05)
                 case _:
-                    featureInputs.append(feature / 10)
+                    featureInputs.append(feature / 10.0)
 
         # return adjusted feature values for NN
         return featureInputs
 
-    ##
-    # utility
-    #
-    # examines a GameState object and returns a heuristic guess of how "good" that game state is on a scale of 0..1.
-    # Start of the game should return 0.5
-    # When the game is almost won
-    #
-    def utility(self, currentState, nextState):
-        myId = currentState.whoseTurn
-        next_inv = nextState.inventories[myId]
+    # ##
+    # # utility
+    # #
+    # # examines a GameState object and returns a heuristic guess of how "good" that game state is on a scale of 0..1.
+    # # Start of the game should return 0.5
+    # # When the game is almost won
+    # #
+    # def utility(self, currentState, nextState):
+    #     myId = currentState.whoseTurn
+    #     next_inv = nextState.inventories[myId]
 
-        # Evaluate absolute position in next state (0-1 scale)
+    #     # Evaluate absolute position in next state (0-1 scale)
 
-        # 1. Food progress (0-1, where 1 = food goal reached)
-        food_score = min(next_inv.foodCount / float(FOOD_GOAL), 1.0)
+    #     # 1. Food progress (0-1, where 1 = food goal reached)
+    #     food_score = min(next_inv.foodCount / float(FOOD_GOAL), 1.0)
 
-        # 2. Route efficiency (normalize to 0-1)
-        route_score = self.compute_route_score(nextState)
-        # Assuming route score needs normalization - adjust based on your range
-        normalized_route = max(0, min(1, (route_score + 1) / 2))  # if route_score is [-1,1]
+    #     # 2. Route efficiency (normalize to 0-1)
+    #     route_score = self.compute_route_score(nextState)
+    #     # Assuming route score needs normalization - adjust based on your range
+    #     normalized_route = max(0, min(1, (route_score + 1) / 2))  # if route_score is [-1,1]
 
-        # 3. Unit composition (normalize to 0-1)
-        unit_score = self.compute_unit_composition_score(nextState)
-        # Normalize based on your unit score range
-        normalized_units = max(0, min(1, unit_score))  # assuming already 0-1
+    #     # 3. Unit composition (normalize to 0-1)
+    #     unit_score = self.compute_unit_composition_score(nextState)
+    #     # Normalize based on your unit score range
+    #     normalized_units = max(0, min(1, unit_score))  # assuming already 0-1
 
-        # 4. Military aggression (normalize to 0-1)
-        aggro_score = self.compute_rsoldier_aggression_score(nextState)
-        # Normalize based on your aggro score range
-        normalized_aggro = max(0, min(1, aggro_score))  # assuming already 0-1
+    #     # 4. Military aggression (normalize to 0-1)
+    #     aggro_score = self.compute_rsoldier_aggression_score(nextState)
+    #     # Normalize based on your aggro score range
+    #     normalized_aggro = max(0, min(1, aggro_score))  # assuming already 0-1
 
-        # Weights (should sum to 1.0 for proper scaling)
-        # food_w = 0.40  # Food is most important for winning
-        # route_w = 0.20  # Efficiency matters
-        # units_w = 0.25  # Unit composition important
-        # aggro_w = 0.15  # Military presence
+    #     # Weights (should sum to 1.0 for proper scaling)
+    #     food_w = 0.40  # Food is most important for winning
+    #     route_w = 0.20  # Efficiency matters
+    #     units_w = 0.25  # Unit composition important
+    #     aggro_w = 0.15  # Military presence
 
-        route_w = 0.10
-        food_w = 0.20
-        units_w = 0.30
-        aggro_w = 0.40
 
-        # Weighted combination (results in 0-1 scale)
-        base_utility = (food_w * food_score +
-                        route_w * normalized_route +
-                        units_w * normalized_units +
-                        aggro_w * normalized_aggro)
+    #     # Weighted combination (results in 0-1 scale)
+    #     base_utility = (food_w * food_score +
+    #                     route_w * normalized_route +
+    #                     units_w * normalized_units +
+    #                     aggro_w * normalized_aggro)
+        
+    #     # print(f"{route_w} {food_w} {units_w} {aggro_score}")
 
-        # Win condition check - if food goal reached, should be close to 1.0
-        if next_inv.foodCount >= FOOD_GOAL:
-            base_utility = max(base_utility, 0.95)  # Near-certain win
+    #     # Win condition check - if food goal reached, should be close to 1.0
+    #     if next_inv.foodCount >= FOOD_GOAL:
+    #         base_utility = max(base_utility, 0.95)  # Near-certain win
 
-        # Loss condition check (optional - if you have lose conditions)
-        # Example: if critically low on food
-        if next_inv.foodCount == 0:
-            base_utility = min(base_utility, 0.05)  # Near-certain loss
+    #     # Loss condition check (optional - if you have lose conditions)
+    #     # Example: if critically low on food
+    #     if next_inv.foodCount == 0:
+    #         base_utility = min(base_utility, 0.05)  # Near-certain loss
 
-        # Ensure strictly within [0,1] bounds
-        return base_utility
+    #     # Ensure strictly within [0,1] bounds
+    #     return base_utility
+
+
+    def utility(self, currentState): 
+        route_score = self.compute_route_score(currentState)         
+        myId = currentState.whoseTurn         
+        enemyId = 1 - myId
+        myInv = currentState.inventories[myId]
+        enemyInv = currentState.inventories[enemyId]
+        
+        # Calculate relative scores (compare to enemy)
+        my_food = myInv.foodCount
+        enemy_food = enemyInv.foodCount
+        
+        # Food score: relative to enemy, starting at 0.5
+        if my_food + enemy_food == 0:
+            food_score = 0.5  # Neutral at game start
+        else:
+            food_score = 0.5 + (my_food - enemy_food) / (2.0 * float(FOOD_GOAL))
+            food_score = max(0.0, min(1.0, food_score))
+        
+        # Route score: already normalized, but ensure it starts neutral
+        if route_score == 0.0:  # No workers yet
+            route_score = 0.5
+        
+        # Unit composition: relative to ideal composition
+        unit_comp = self.compute_unit_composition_score(currentState)
+        # Convert from [0,1] to centered around 0.5
+        # Perfect composition (0.5 worker + 0.5 rsoldier) = 1.0 becomes 0.75
+        # No units = 0.0 -> becomes 0.25
+        # Start of game (just worker) = 0.5 becomes 0.5
+        unit_comp_centered = 0.25 + (unit_comp * 0.5)
+    
+        # Aggression score: relative effectiveness
+        my_aggro = self.compute_rsoldier_aggression_score(currentState)
+        
+        # Enemy aggression (defensive consideration)
+        enemy_rsoldiers = getAntList(currentState, enemyId, (R_SOLDIER,))
+        my_workers = getAntList(currentState, myId, (WORKER,))
+        my_anthill = myInv.getAnthill()
+        
+        enemy_threat = 0.0
+        if len(enemy_rsoldiers) > 0 and my_anthill:
+            total_threat = 0.0
+            for enemy_rs in enemy_rsoldiers:
+                # Threat based on how close enemy soldiers are to our assets
+                threats = []
+                for worker in my_workers:
+                    dist = stepsToReach(currentState, enemy_rs.coords, worker.coords)
+                    if dist >= 0:
+                        threats.append(dist)
+                
+                hill_dist = stepsToReach(currentState, enemy_rs.coords, my_anthill.coords)
+                if hill_dist >= 0:
+                    threats.append(hill_dist)
+                
+                if threats:
+                    min_threat_dist = min(threats)
+                    threat_score = max(0.0, 1.0 - (min_threat_dist / 15.0))
+                    total_threat += threat_score
+            
+            enemy_threat = min(1.0, total_threat / len(enemy_rsoldiers))
+        
+        # Net aggression: our offense minus their threat
+        net_aggro = 0.5 + (my_aggro - enemy_threat) * 0.5
+        net_aggro = max(0.0, min(1.0, net_aggro))
+        
+        # Game phase adaptive weights
+        total_food = my_food + enemy_food
+        
+        if total_food <= 3: # Early game
+            route_w = 0.4
+            food_w = 0.4  
+            units_w = 0.2
+            aggro_w = 0.0
+        elif total_food <= 8: # Mid game
+            route_w = 0.3
+            food_w = 0.3
+            units_w = 0.25
+            aggro_w = 0.15
+        else:  # Late game
+            route_w = 0.2
+            food_w = 0.35
+            units_w = 0.2
+            aggro_w = 0.25
+        
+        # Win/lose conditions override
+        if my_food >= FOOD_GOAL:
+            return 1.0  # We won
+        elif enemy_food >= FOOD_GOAL:
+            return 0.0  # We lost
+        
+        # Calculate weighted score
+        score = (route_w * route_score + 
+                food_w * food_score + 
+                units_w * unit_comp_centered + 
+                aggro_w * net_aggro)
+        
+        # Ensure score stays in bounds and starts near 0.5
+        return max(0.0, min(1.0, score))
 
     
 
@@ -645,22 +943,6 @@ class AIPlayer(Player):
             avg_aggression += elimination_bonus
 
         return clamp(avg_aggression)
-
-    # # load previous weights
-    # def loadData(self, filename="agent_learning_data.npz"):
-    #     if os.path.exists(filename):
-    #         data = np.load(filename)
-    #         hiddenLayerWeights = data["hiddenLayerWeights"]
-    #         outputLayerWeights = data["outputLayerWeights"]
-    #         self.epoch = int(data["epoch"])
-    #         print(f"Loaded saved model from {filename} (epoch {self.epoch})")
-    #     else:
-    #         np.random.seed(1)
-    #         hiddenLayerWeights = np.random.rand(self.INPUT_NODES + 1, self.HIDDEN_NODES)   # 40 nodes
-    #         outputLayerWeights = np.random.rand(self.HIDDEN_NODES + 1, self.OUTPUT_NODES)   # 9 nodes
-    #         print(" No saved model found. Starting fresh.")
-
-    #     return hiddenLayerWeights, outputLayerWeights
     
 
 
@@ -671,7 +953,7 @@ class AIPlayer(Player):
         return {
             "move": move,
             "state": state,
-            "evaluation": utility,
+            "evaluation": (utility + 1),
             "parent": parent
         }
 
@@ -679,8 +961,6 @@ class AIPlayer(Player):
     #
     def bestMove(self, nodes):
         return max(nodes, key=lambda x: x["evaluation"])
-    
-
 
 
 
@@ -688,3 +968,4 @@ class AIPlayer(Player):
 # clamp function for capping min and max values
 def clamp(v, lo=0.0, hi=1.0):
     return max(lo, min(hi, v))
+
